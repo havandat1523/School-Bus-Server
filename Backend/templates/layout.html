@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SchoolBus Monitoring System{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Leaflet Map library 1.9.4 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    {% block head %}{% endblock %}
+</head>
+
+<body class="{% block body_class %}{% endblock %}">
+    <header>
+        <h1>SCHOOLBUS MONITORING PLATFORM</h1>
+        <nav>
+            <a href="/" id="nav-dashboard">MAP</a>
+            <a href="/drivers" id="nav-drivers">DRIVERS</a>
+            <a href="/attendants" id="nav-attendants">ATTENDANTS</a>
+            <a href="/students" id="nav-students">STUDENTS</a>
+            <a href="/logout" style="color: var(--danger-color); margin-left: 30px; font-weight: 700;">LOGOUT</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

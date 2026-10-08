@@ -1,0 +1,290 @@
+{% extends "layout.html" %}
+
+{% block title %}Attendants - SchoolBus{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Bus Attendants List</h2>
+    <button class="btn-add" onclick="openModal('add-attendant-modal')">+ Add New Attendant</button>
+</div>
+
+<div class="card-full">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Attendant ID</th>
+                <th>Full Name</th>
+                <th>CCCD</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>RFID Card UID</th>
+                <th>Status</th>
+                <th>Duty Status</th>
+                <th style="width: 50px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if attendants %}
+            {% for attendant in attendants %}
+            <tr>
+                <td><b>{{ attendant.attendant_id }}</b></td>
+                <td>{{ attendant.full_name }}</td>
+                <td>{{ attendant.citizen_id or "---" }}</td>
+                <td>{{ attendant.phone or "---" }}</td>
+                <td>{{ attendant.email or "---" }}</td>
+                <td><code
+                        style="background:#f1f5f9; color:#0f172a; padding:4px 8px; border-radius:4px; border:1px solid #e2e8f0; font-family:monospace; font-weight:600;">{{ attendant.rfid_code }}</code>
+                </td>
+                <td>
+                    {% if attendant.status == 'active' %}
+                    <span class="badge active"
+                        style="background-color: rgba(22, 163, 74, 0.1); color: var(--success-color);">Active</span>
+                    {% elif attendant.status == 'suspended' %}
+                    <span class="badge"
+                        style="background-color: rgba(220, 38, 38, 0.1); color: var(--danger-color); font-weight: bold;">Suspended</span>
+                    {% else %}
+                    <span class="badge active">{{ attendant.status or 'active' }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if attendant.duty_status == 'onduty' %}
+                    <span class="badge"
+                        style="background-color: rgba(2, 132, 199, 0.1); color: #0284c7; font-weight: bold;">On
+                        Duty</span>
+                    {% else %}
+                    <span class="badge" style="background-color: #f1f5f9; color: #64748b;">Off Duty</span>
+                    {% endif %}
+                </td>
+                <td class="action-column">
+                    <button class="action-btn"
+                        onclick="toggleDropdown('dropdown-{{ attendant.attendant_id }}')">⋮</button>
+                    <div id="dropdown-{{ attendant.attendant_id }}" class="dropdown-menu">
+                        <button type="button" data-id="{{ attendant.attendant_id }}"
+                            data-name="{{ attendant.full_name }}" data-citizen="{{ attendant.citizen_id or '' }}"
+                            data-phone="{{ attendant.phone or '' }}" data-email="{{ attendant.email or '' }}"
+                            data-rfid="{{ attendant.rfid_code or '' }}" onclick="openEditAttendantModal(this)">
+                            Edit
+                        </button>
+                        {% if attendant.status == 'suspended' %}
+                        <form action="/attendants/{{ attendant.attendant_id }}/activate" method="POST">
+                            <button type="submit" class="view-action">Activate</button>
+                        </form>
+                        {% else %}
+                        <form action="/attendants/{{ attendant.attendant_id }}/suspend" method="POST"
+                            onsubmit="return confirm('Are you sure you want to suspend this attendant?')">
+                            <button type="submit">Suspend</button>
+                        </form>
+                        {% endif %}
+                        <form action="/attendants/{{ attendant.attendant_id }}/delete" method="POST"
+                            onsubmit="return confirm('Are you sure you want to delete this attendant?')">
+                            <button type="submit" class="delete-action">Delete</button>
+                        </form>
+                        <!-- F1: Xác nhận thủ công phụ xe -->
+                        <button type="button" data-att-id="{{ attendant.attendant_id }}"
+                            data-att-name="{{ attendant.full_name }}" onclick="openAttendantManualModal(this)">
+                            Force Login/Logout
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                    No attendants registered in the system.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Attendant Modal -->
+<div id="add-attendant-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h2>Register New Attendant</h2>
+        <form action="/attendants/add" method="POST">
+            <div class="form-group">
+                <label for="attendant_id">Attendant ID:</label>
+                <input type="text" id="attendant_id" name="attendant_id" class="form-control" placeholder="e.g., PX0003"
+                    required>
+            </div>
+
+            <div class="form-group">
+                <label for="full_name">Full Name:</label>
+                <input type="text" id="full_name" name="full_name" class="form-control" placeholder="e.g., Hà Mai Xuân"
+                    required>
+            </div>
+
+            <div class="form-group">
+                <label for="citizen_id">Citizen ID (CCCD):</label>
+                <input type="text" id="citizen_id" name="citizen_id" class="form-control"
+                    placeholder="e.g., 001202003456" required>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Phone Number:</label>
+                <input type="text" id="phone" name="phone" class="form-control" placeholder="e.g., 0912345678" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address:</label>
+                <input type="email" id="email" name="email" class="form-control"
+                    placeholder="e.g., attendant@schoolbus.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="rfid_code">RFID Card UID:</label>
+                <input type="text" id="rfid_code" name="rfid_code" class="form-control" placeholder="e.g., C37F5BE403"
+                    required>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button type="submit" class="btn" style="flex: 1;">Register (Active)</button>
+                <button type="button" class="btn" style="flex: 1; background: var(--text-secondary); color: #ffffff;"
+                    onclick="closeModal('add-attendant-modal')">Close</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Attendant Modal -->
+<div id="edit-attendant-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h2>Edit Attendant Profile</h2>
+        <form id="edit-attendant-form" method="POST">
+            <div class="form-group">
+                <label for="edit_attendant_id_display">Attendant ID:</label>
+                <input type="text" id="edit_attendant_id_display" class="form-control" readonly
+                    style="background-color: #f1f5f9; cursor: not-allowed;">
+            </div>
+
+            <div class="form-group">
+                <label for="edit_full_name">Full Name:</label>
+                <input type="text" id="edit_full_name" name="full_name" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="edit_citizen_id">Citizen ID (CCCD):</label>
+                <input type="text" id="edit_citizen_id" name="citizen_id" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="edit_phone">Phone Number:</label>
+                <input type="text" id="edit_phone" name="phone" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="edit_email">Email Address:</label>
+                <input type="email" id="edit_email" name="email" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="edit_rfid_code">RFID Card UID:</label>
+                <input type="text" id="edit_rfid_code" name="rfid_code" class="form-control" required>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button type="submit" class="btn" style="flex: 1;">Save Changes</button>
+                <button type="button" class="btn" style="flex: 1; background: var(--text-secondary); color: #ffffff;"
+                    onclick="closeModal('edit-attendant-modal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById("nav-attendants").classList.add("active");
+
+    // Modal Control Functions
+    function openModal(id) {
+        document.getElementById(id).style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    function openEditAttendantModal(btn) {
+        const d = btn.dataset;
+        document.getElementById('edit-attendant-form').action = `/attendants/${d.id}/edit`;
+        document.getElementById('edit_attendant_id_display').value = d.id;
+        document.getElementById('edit_full_name').value = d.name || '';
+        document.getElementById('edit_citizen_id').value = d.citizen || '';
+        document.getElementById('edit_phone').value = d.phone || '';
+        document.getElementById('edit_email').value = d.email || '';
+        document.getElementById('edit_rfid_code').value = d.rfid || '';
+        openModal('edit-attendant-modal');
+    }
+
+    // Close modals/dropdowns when clicking outside
+    window.addEventListener('click', function (e) {
+        if (!e.target.matches('.action-btn')) {
+            const dropdowns = document.getElementsByClassName("dropdown-menu");
+            for (let i = 0; i < dropdowns.length; i++) {
+                dropdowns[i].style.display = "none";
+            }
+        }
+        if (e.target.matches('.modal-overlay')) {
+            e.target.style.display = 'none';
+        }
+    });
+
+    function toggleDropdown(id) {
+        const el = document.getElementById(id);
+        const isVisible = el.style.display === "block";
+
+        // Hide all other dropdowns
+        const dropdowns = document.getElementsByClassName("dropdown-menu");
+        for (let i = 0; i < dropdowns.length; i++) {
+            dropdowns[i].style.display = "none";
+        }
+
+        if (!isVisible) {
+            el.style.display = "block";
+        }
+    }
+    // ── F1: Attendant Manual Attendance ─────────────────────────────────────────
+    function openAttendantManualModal(btn) {
+        const aid = btn.getAttribute('data-att-id');
+        const aname = btn.getAttribute('data-att-name');
+        document.getElementById('att-ma-id').value = aid;
+        document.getElementById('att-ma-name-label').textContent = aname + ' (' + aid + ')';
+        document.querySelectorAll('.dropdown-menu').forEach(d => d.style.display = 'none');
+        document.getElementById('att-manual-modal').style.display = 'flex';
+    }
+
+    function submitAttendantManual() {
+        const aid = document.getElementById('att-ma-id').value;
+        const direction = document.querySelector('input[name="att-direction"]:checked')?.value;
+        const reason = document.getElementById('att-ma-reason').value;
+        const vehicleId = document.getElementById('att-ma-vehicle-id').value;
+
+        if (!direction) { alert('Vui lòng chọn chiều (Lên xe / Xuống xe)'); return; }
+        if (!vehicleId) { alert('Vui lòng nhập ID xe'); return; }
+
+        const formData = new FormData();
+        formData.append('vehicle_id', vehicleId);
+        formData.append('direction', direction);
+        formData.append('reason', reason || 'forgot_card');
+        formData.append('confirmed_by', 'admin');
+
+        fetch('/api/attendant/' + aid + '/manual-attendance', {
+            method: 'POST',
+            body: formData
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.result === 1) {
+                    alert('✅ ' + data.message);
+                    document.getElementById('att-manual-modal').style.display = 'none';
+                } else {
+                    alert('❌ Lỗi: ' + (data.detail || 'Không thể xử lý'));
+                }
+            })
+            .catch(e => alert('❌ Lỗi kết nối: ' + e));
+    }
+</script>
+{% endblock %}

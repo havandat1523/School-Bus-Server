@@ -1,0 +1,824 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - SchoolBus{% endblock %}
+
+{% block body_class %}dashboard-page{% endblock %}
+
+{% block content %}
+<div id="map-container" style="position: relative; width: 100%; height: calc(100vh - 52px); overflow: hidden;">
+    <!-- Leaflet Map Div -->
+    <div id="map" style="width: 100%; height: 100%; margin: 0; border: none; border-radius: 0; background: #e2e8f0;"></div>
+
+    <!-- F6: Top SOS Active Banner (nếu có xe phát SOS) -->
+    <div id="sos-top-banner" class="sos-top-banner" style="display:none;" onclick="showFirstSosModal()">
+        <span style="font-size: 18px;">🚨</span>
+        <span id="sos-banner-text">CẢNH BÁO SOS: ĐANG CÓ XE NGUY HIỂM</span>
+        <span style="background: rgba(255,255,255,0.25); padding: 3px 10px; border-radius: 12px; font-size: 11px;">CHI TIẾT ▼</span>
+    </div>
+
+<!-- Notification Toasts: bottom-right corner -->
+<style>
+@keyframes slideInRight {
+    from { transform: translateX(120%); opacity: 0; }
+    to   { transform: translateX(0);   opacity: 1; }
+}
+@keyframes sosPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6); }
+    50%       { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
+}
+@keyframes heartbeat {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px #ef4444); }
+    50%      { transform: scale(1.45); filter: drop-shadow(0 0 16px #dc2626); }
+}
+.sos-heartbeat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    animation: heartbeat 0.8s infinite ease-in-out;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+}
+.custom-sos-wrap {
+    background: transparent !important;
+    border: none !important;
+}
+.sos-top-banner {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: white;
+    padding: 10px 22px;
+    border-radius: 30px;
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    animation: sosPulse 1.5s infinite;
+}
+.toast-slide.visible {
+    animation: slideInRight 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+#sos-toast.visible {
+    animation: slideInRight 0.3s ease-out forwards, sosPulse 1.4s ease-in-out 0.3s infinite;
+}
+</style>
+
+<!-- SOS Emergency Alert Toast -->
+<div id="sos-toast" class="toast-slide" style="display:none; position:fixed; bottom:24px; right:24px; z-index:20000;
+    background:#1a0000; border-radius:12px; border-bottom:3px solid #dc2626;
+    box-shadow:0 8px 32px rgba(220,38,38,0.45); padding:16px 18px; width:320px; font-family:inherit;">
+    <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px;">
+        <span class="sos-heartbeat-icon" style="font-size:26px; flex-shrink:0;">❤️</span>
+        <div style="flex:1;">
+            <div style="font-size:13px; font-weight:900; color:#ef4444; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px;">SOS EMERGENCY ALERT</div>
+            <div style="font-size:11px; color:#fca5a5; font-weight:600; margin-bottom:2px;">Vehicle: <span id="sos-vehicle-id" style="color:#fff;">---</span></div>
+            <div style="font-size:11px; color:#fca5a5;">Driver: <span id="sos-driver-id" style="color:#fff;">---</span></div>
+            <div style="font-size:11px; color:#fca5a5; margin-top:4px;">Coordinates: <span id="sos-coords" style="color:#fbbf24; font-family:monospace;">---</span></div>
+        </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <button onclick="showFirstSosModal()" style="flex:1; background:#0284c7; color:#fff; border:none; padding:8px 0; border-radius:8px; font-weight:800; font-size:11px; cursor:pointer;">
+            XEM CHI TIẾT
+        </button>
+        <button onclick="dismissSos()" id="btn-dismiss-sos"
+            style="flex:1; background:#dc2626; color:#fff; border:none; padding:8px 0;
+                   border-radius:8px; font-weight:800; font-size:11px; cursor:pointer;
+                   transition:filter 0.15s;"
+            onmouseover="this.style.filter='brightness(0.85)'"
+            onmouseout="this.style.filter=''">✓ ĐÓNG SOS</button>
+    </div>
+</div>
+
+<!-- F6: Modal Chi tiết sự kiện SOS -->
+<div id="sos-detail-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); backdrop-filter:blur(4px); z-index:30000; align-items:center; justify-content:center;">
+    <div style="background:#ffffff; border-radius:18px; width:480px; max-width:92vw; box-shadow:0 20px 50px rgba(0,0,0,0.3); overflow:hidden; border:2px solid #ef4444;">
+        <div style="background:linear-gradient(135deg, #dc2626, #b91c1c); padding:16px 20px; color:white; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:16px; font-weight:900; display:flex; align-items:center; gap:8px;">
+                <span class="sos-heartbeat-icon" style="font-size:22px;">❤️</span>
+                <span>CẢNH BÁO SOS KHẨN CẤP</span>
+            </div>
+            <button onclick="closeSosModal()" style="background:none; border:none; color:white; font-size:20px; cursor:pointer; font-weight:bold;">✕</button>
+        </div>
+        <div style="padding:20px; font-size:13px; color:#334155;">
+            <div style="display:grid; grid-template-columns: 140px 1fr; gap:10px; margin-bottom:16px;">
+                <div style="font-weight:700; color:#64748b;">Biển số xe:</div>
+                <div id="modal-sos-vid" style="font-weight:900; color:#0f172a; font-size:15px;">---</div>
+                
+                <div style="font-weight:700; color:#64748b;">Mã sự kiện (sos_id):</div>
+                <div id="modal-sos-id" style="font-family:monospace; color:#dc2626; font-size:11px; word-break:break-all;">---</div>
+                
+                <div style="font-weight:700; color:#64748b;">Nguồn kích hoạt:</div>
+                <div id="modal-sos-source" style="font-weight:700;">---</div>
+
+                <div style="font-weight:700; color:#64748b;">Tọa độ GPS:</div>
+                <div id="modal-sos-gps" style="font-family:monospace; color:#0284c7; font-weight:700;">---</div>
+
+                <div style="font-weight:700; color:#64748b;">Thời gian:</div>
+                <div id="modal-sos-time" style="color:#64748b;">---</div>
+
+                <div style="font-weight:700; color:#64748b;">Trạng thái:</div>
+                <div id="modal-sos-status" style="font-weight:800;">---</div>
+            </div>
+
+            <div style="background:#fef2f2; border:1px solid #fee2e2; border-radius:10px; padding:12px; margin-bottom:18px;">
+                <div style="font-size:11px; color:#991b1b; line-height:1.4;">
+                    <b>Quy trình xử lý:</b> Nhấn <b>"Tiếp nhận (Stage 1)"</b> để gửi tín hiệu ACK stage 1 về xe. Khi sự việc an toàn, nhấn <b>"Đóng cảnh báo"</b> để giải quyết triệt để.
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="modal-btn-ack" onclick="ackCurrentSos()" style="flex:1; background:#0284c7; color:white; border:none; padding:11px 0; border-radius:10px; font-weight:800; font-size:12px; cursor:pointer;">
+                    ✓ TIẾP NHẬN (STAGE 1)
+                </button>
+                <button id="modal-btn-resolve" onclick="resolveCurrentSos()" style="flex:1; background:#16a34a; color:white; border:none; padding:11px 0; border-radius:10px; font-weight:800; font-size:12px; cursor:pointer;">
+                    ✔ ĐÓNG CẢNH BÁO
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Session Approval Toast -->
+<div id="map-center-modal" class="toast-slide" style="display:none; position:fixed; bottom:24px; right:24px; z-index:19999;
+    background:#ffffff; border-radius:12px; border-bottom:3px solid #ea580c;
+    box-shadow:0 8px 30px rgba(0,0,0,0.18); padding:14px 16px; width:300px; font-family:inherit;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+        <span style="font-size:20px;">⚠️</span>
+        <div>
+            <div style="font-size:11px; font-weight:800; color:#ea580c; text-transform:uppercase; letter-spacing:0.4px;">Session Approval Required</div>
+            <div style="font-size:12px; color:#475569; margin-top:2px;">
+                Driver: <b id="pending-driver-name" style="color:#0f172a;">---</b>
+                &nbsp;•&nbsp; Bus: <b id="pending-vehicle-id" style="color:#ea580c;">---</b>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <button onclick="confirmSession('agree')" id="btn-agree"
+            style="flex:1; background:#16a34a; color:#fff; border:none; padding:8px 0;
+                   border-radius:8px; font-weight:700; font-size:12px; cursor:pointer;
+                   transition:filter 0.15s;"
+            onmouseover="this.style.filter='brightness(0.88)'"
+            onmouseout="this.style.filter=''">✓ Approve</button>
+        <button onclick="confirmSession('disagree')" id="btn-disagree"
+            style="flex:1; background:#dc2626; color:#fff; border:none; padding:8px 0;
+                   border-radius:8px; font-weight:700; font-size:12px; cursor:pointer;
+                   transition:filter 0.15s;"
+            onmouseover="this.style.filter='brightness(0.88)'"
+            onmouseout="this.style.filter=''">✕ Reject</button>
+    </div>
+</div>
+
+    <!-- Floating Overlay SaaS Panel (Collapsible) -->
+    <div id="dashboard-panel" class="floating-panel">
+        <!-- Header / Toggle strip -->
+        <div class="panel-header" onclick="togglePanel()">
+            <div class="panel-header-title">
+                <span class="pulse-indicator"></span>
+                <span id="panel-bus-id">SELECT VEHICLE</span>
+            </div>
+            <span id="panel-toggle-btn" class="toggle-btn">▼</span>
+        </div>
+        
+        <!-- Expanded Panel Body -->
+        <div id="panel-body" class="panel-body">
+            {% if vehicles %}
+                <div class="section" style="padding-top: 0;">
+                    <label style="font-weight: 700; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 8px;">TRACKED VEHICLES</label>
+                    <div class="vehicle-grid">
+                        {% for vehicle in vehicles %}
+                            <div class="vehicle-widget {% if loop.first %}active{% endif %}" data-vehicle-id="{{ vehicle.id }}" onclick="selectVehicle('{{ vehicle.id }}', this)">
+                                <div class="widget-icon">🚌</div>
+                                <div class="widget-id" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ vehicle.id }}</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Live Telemetry</h3>
+                    <div class="info-grid">
+                        <div>Status: <span id="status-val" style="color: var(--success-color); font-weight: 700;">ACTIVE</span></div>
+                        <div>Speed: <span id="speed-val" style="font-weight: 700;">0.0 km/h</span></div>
+                        <div>Temperature: <span id="temp-val" style="font-weight: 700; color: #f97316;">0.0 °C</span></div>
+                        <div>Humidity: <span id="humi-val" style="font-weight: 700; color: #3b82f6;">0.0 %</span></div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>Onboard Crew</h3>
+                    <div class="info-grid">
+                        <div>Driver ID: <span id="driver-val" style="font-weight: 700; color: var(--text-primary);">---</span></div>
+                        <div>Attendant: <span id="attendant-val" style="font-weight: 700; color: var(--text-primary);">---</span></div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>Seat Mapping (<span id="passengers-count-val">0</span> Onboard)</h3>
+                    <div class="seats-map-small" id="seats-container">
+                        {% for i in range(1, 17) %}
+                            <div class="seat-mini empty" id="seat-{{ i }}">
+                                {% if i == 1 %}DRV{% elif i == 2 %}ATT{% else %}S{{ i }}{% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:12px; font-size:10px; color:var(--text-secondary); font-weight: 500;">
+                        <div><span style="display:inline-block; width:8px; height:8px; background-color:#cbd5e1; border-radius:2px; margin-right:4px;"></span>Empty</div>
+                        <div><span style="display:inline-block; width:8px; height:8px; background-color:#6366f1; border-radius:2px; margin-right:4px;"></span>Crew</div>
+                        <div><span style="display:inline-block; width:8px; height:8px; background-color:var(--warning-color); border-radius:2px; margin-right:4px;"></span>Student</div>
+                    </div>
+                </div>
+                
+                <div class="section" style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    <h3>Camera Stream</h3>
+                    <style>
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                        .stream-btn:hover {
+                            filter: brightness(0.95);
+                        }
+                    </style>
+                    <div style="margin-bottom: 10px;">
+                        <button id="stream-btn" class="stream-btn" style="width: 100%; background-color: var(--accent-color); color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;" onclick="toggleStream()">
+                            Start Video Stream
+                        </button>
+                    </div>
+                    <div id="stream-view-container" style="display: none; background-color: #000; border-radius: 8px; overflow: hidden; margin-top: 10px; border: 1px solid var(--border-color); position: relative; aspect-ratio: 4/3;">
+                        <div id="stream-loading" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-size: 13px; z-index: 1; background: rgba(0,0,0,0.8);">
+                            <div style="border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid #fff; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 10px;"></div>
+                            Connecting to stream...
+                        </div>
+                        <img id="stream-img" src="" style="width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.2;" onerror="handleStreamError()"/>
+                    </div>
+                </div>
+                
+                <div class="section" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+                    <h3>Recent Event Logs</h3>
+                    <div id="log-container" class="alerts-log-small">
+                        {% if logs %}
+                            {% for log in logs %}
+                                <div class="alert-item-small" style="padding: 6px 4px; border-bottom: 1px dashed var(--border-color); font-size: 11px;">
+                                    <span style="color:var(--text-secondary); font-weight:600;">[{{ log.timestamp.split(' ')[1] }}]</span>
+                                    <span style="font-weight: 600; color: {% if log.type in [15, 16, 5, 10] %}var(--danger-color){% elif log.type in [2, 4, 7, 9] %}var(--success-color){% else %}var(--text-primary){% endif %};">
+                                        {{ log.description }}
+                                    </span>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div style="color: var(--text-secondary); text-align: center; padding: 15px 0;">No active logs received.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% else %}
+                <div style="color:var(--danger-color); text-align:center; padding: 20px 0; font-size: 13px; font-weight:600;">
+                    No schoolbus devices enrolled in database.<br>
+                    Start the Raspberry Pi client to auto-enroll.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById("nav-dashboard").classList.add("active");
+
+    let map;
+    let marker;
+    let currentVehicleId = "";
+    const vehicleSelect = document.getElementById("vehicle-select");
+    const panelBody = document.getElementById("panel-body");
+    const panelToggleBtn = document.getElementById("panel-toggle-btn");
+    const panelBusId = document.getElementById("panel-bus-id");
+
+    // Collapsible logic
+    let panelExpanded = true;
+    function togglePanel() {
+        if (panelExpanded) {
+            panelBody.style.display = "none";
+            panelToggleBtn.innerText = "▲";
+            panelExpanded = false;
+        } else {
+            panelBody.style.display = "block";
+            panelToggleBtn.innerText = "▼";
+            panelExpanded = true;
+        }
+    }
+
+    // Yellow School Bus SVG Custom Leaflet Icon
+    const schoolBusSVG = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="40" height="40" style="filter: drop-shadow(0px 3px 6px rgba(0,0,0,0.3));">
+        <!-- Main Yellow Body -->
+        <path d="M480 208v160c0 17.7-14.3 32-32 32h-16c-17.7 0-32-14.3-32-32v-16H112v16c0 17.7-14.3 32-32 32H64c-17.7 0-32-14.3-32-32V208c0-35.3 28.7-64 64-64h20c11.5-12.8 28-20 45.3-20h213.3c17.3 0 33.9 7.2 45.3 20h20c35.3 0 64 28.7 64 64z" fill="#facc15"/>
+        <!-- Roof and Trim lines (Dark Slate) -->
+        <path d="M96 144h320v16H96zm16-40h288v8H112z" fill="#1e293b"/>
+        <!-- Glass Windows (Soft Ice Blue) -->
+        <rect x="72" y="192" width="60" height="60" rx="8" fill="#a5f3fc"/>
+        <rect x="156" y="192" width="60" height="60" rx="8" fill="#a5f3fc"/>
+        <rect x="240" y="192" width="60" height="60" rx="8" fill="#a5f3fc"/>
+        <rect x="324" y="192" width="60" height="60" rx="8" fill="#a5f3fc"/>
+        <!-- Wheels (Black) -->
+        <circle cx="120" cy="400" r="34" fill="#1e293b"/>
+        <circle cx="120" cy="400" r="16" fill="#94a3b8"/>
+        <circle cx="392" cy="400" r="34" fill="#1e293b"/>
+        <circle cx="392" cy="400" r="16" fill="#94a3b8"/>
+        <!-- Rear/Front Lights (Bright Red/Orange) -->
+        <circle cx="48" cy="272" r="10" fill="#f97316"/>
+        <circle cx="464" cy="272" r="10" fill="#ef4444"/>
+    </svg>`;
+
+    const customBusIcon = L.divIcon({
+        html: schoolBusSVG,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+        className: 'leaflet-bus-icon'
+    });
+
+    function initMap() {
+        map = L.map('map', {
+            zoomControl: false,
+            fadeAnimation: true
+        }).setView([21.0021, 105.8462], 15);
+        
+        // Add zoom control at top right instead of top left to keep our overlay clear
+        L.control.zoom({
+            position: 'topright'
+        }).addTo(map);
+
+        // Google Maps Standard Road Layer (Cực kỳ sắc nét & chi tiết tại Việt Nam) - MẶC ĐỊNH
+        const googleRoads = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            attribution: '&copy; Google Maps',
+            maxZoom: 20
+        });
+
+        // Google Maps Satellite & Hybrid (Ảnh vệ tinh kèm tên đường)
+        const googleHybrid = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            attribution: '&copy; Google Maps Satellite',
+            maxZoom: 20
+        });
+
+        // OpenStreetMap Standard Layer (Chuẩn mã nguồn mở, không cần API Key)
+        const osmStandard = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+        });
+
+        // Add Google Maps làm bản đồ mặc định
+        googleRoads.addTo(map);
+
+        // Add layer switcher control
+        const baseMaps = {
+            "🌐 Google Maps": googleRoads,
+            "🛰️ Google Vệ Tinh": googleHybrid,
+            "🗺️ OpenStreetMap": osmStandard
+        };
+        L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+        
+        marker = L.marker([21.0021, 105.8462], { icon: customBusIcon }).addTo(map)
+            .bindPopup("Establishing live coordinates...")
+            .openPopup();
+
+        // Ensure tiles render immediately even if container is dynamic
+        setTimeout(function() {
+            if (map) map.invalidateSize();
+        }, 250);
+        window.addEventListener('resize', function() {
+            if (map) map.invalidateSize();
+        });
+    }
+
+
+    let isStreamActive = false;
+    let streamRequestPending = false;
+
+    function updateVehicleStatus() {
+        if (!currentVehicleId) return;
+        
+        fetch(`/api/vehicle/${currentVehicleId}/status`)
+            .then(res => res.json())
+            .then(data => {
+                panelBusId.innerText = `BUS: ${currentVehicleId}`;
+                document.getElementById("status-val").innerText = "ACTIVE";
+                document.getElementById("status-val").style.color = "var(--success-color)";
+                document.getElementById("speed-val").innerText = `${data.speed.toFixed(1)} km/h`;
+                document.getElementById("driver-val").innerText = data.driver_id ? data.driver_id : "Not Verified";
+                document.getElementById("attendant-val").innerText = data.attendant_id ? data.attendant_id : "Not Verified";
+                document.getElementById("passengers-count-val").innerText = data.students_count;
+                
+                // Session Approval Toast
+                const centerModal = document.getElementById("map-center-modal");
+                const sosToast = document.getElementById("sos-toast");
+
+                // SOS Toast handling (higher priority: shown on top via z-index 20000)
+                if (sosToast) {
+                    if (data.sos_active === 1) {
+                        // Offset session toast down if SOS is also showing
+                        if (centerModal) centerModal.style.bottom = "240px";
+                        sosToast.style.display = "block";
+                        sosToast.classList.add("visible");
+                        document.getElementById("sos-vehicle-id").innerText = currentVehicleId;
+                        document.getElementById("sos-driver-id").innerText = data.driver_id || "Unknown";
+                        const lat = (data.lat || 0).toFixed(5);
+                        const lon = (data.lon || 0).toFixed(5);
+                        document.getElementById("sos-coords").innerText = `${lat}, ${lon}`;
+                    } else {
+                        sosToast.style.display = "none";
+                        sosToast.classList.remove("visible");
+                        if (centerModal) centerModal.style.bottom = "24px";
+                    }
+                }
+
+                // Session approval toast
+                if (centerModal) {
+                    if (data.session_pending_confirm === 1) {
+                        centerModal.style.display = "block";
+                        centerModal.classList.add("visible");
+                        document.getElementById("pending-driver-name").innerText = data.driver_name || data.driver_id || "Driver";
+                        document.getElementById("pending-vehicle-id").innerText = currentVehicleId;
+                    } else {
+                        centerModal.style.display = "none";
+                        centerModal.classList.remove("visible");
+                    }
+                }
+
+                // Update Temperature and Humidity
+                if (document.getElementById("temp-val")) {
+                    document.getElementById("temp-val").innerText = `${(data.temperature || 0).toFixed(1)} °C`;
+                }
+                if (document.getElementById("humi-val")) {
+                    document.getElementById("humi-val").innerText = `${(data.humidity || 0).toFixed(1)} %`;
+                }
+
+                // Update Camera Stream UI
+                const streamBtn = document.getElementById("stream-btn");
+                const streamView = document.getElementById("stream-view-container");
+                const streamImg = document.getElementById("stream-img");
+                
+                isStreamActive = (data.is_streaming === 1);
+                
+                if (!streamRequestPending) {
+                    if (isStreamActive) {
+                        streamBtn.innerText = "Stop Video Stream";
+                        streamBtn.style.backgroundColor = "var(--danger-color)";
+                        streamView.style.display = "block";
+                        
+                        const feedUrl = `/api/vehicle/${currentVehicleId}/video_feed`;
+                        if (streamImg.src !== window.location.origin + feedUrl) {
+                            streamImg.src = feedUrl;
+                        }
+                    } else {
+                        streamBtn.innerText = "Start Video Stream";
+                        streamBtn.style.backgroundColor = "var(--accent-color)";
+                        streamView.style.display = "none";
+                        streamImg.src = "";
+                        document.getElementById("stream-loading").style.display = "flex";
+                        streamImg.style.opacity = "0.2";
+                    }
+                }
+                
+                const pos = [data.lat, data.lon];
+                marker.setLatLng(pos);
+                map.panTo(pos);
+                marker.getPopup().setContent(`<b>Bus ID: ${currentVehicleId}</b><br>Speed: ${data.speed.toFixed(1)} km/h<br>Passengers: ${data.students_count}`);
+
+                const bitmap = data.seats_bitmap;
+                for (let i = 1; i <= 16; i++) {
+                    const seatEl = document.getElementById(`seat-${i}`);
+                    if (!seatEl) continue;
+                    
+                    const occupied = (bitmap >> (i - 1)) & 0x01;
+                    seatEl.className = "seat-mini";
+                    
+                    if (occupied === 1) {
+                        if (i === 1 || i === 2) {
+                            seatEl.classList.add("staff");
+                        } else {
+                            seatEl.classList.add("occupied");
+                        }
+                    } else {
+                        seatEl.classList.add("empty");
+                    }
+                }
+            })
+            .catch(err => {
+                console.error("Error fetching vehicle status:", err);
+                document.getElementById("status-val").innerText = "OFFLINE";
+                document.getElementById("status-val").style.color = "var(--danger-color)";
+            });
+    }
+
+    let activeEmergencies = [];
+    let sosMarkers = {};
+    let currentSosModalEvent = null;
+
+    function fetchEmergenciesAndSyncMarkers() {
+        fetch('/api/emergency/active')
+            .then(res => res.json())
+            .then(data => {
+                activeEmergencies = data.emergencies || [];
+                const banner = document.getElementById("sos-top-banner");
+                const bannerText = document.getElementById("sos-banner-text");
+
+                if (activeEmergencies.length > 0) {
+                    if (banner) {
+                        banner.style.display = "flex";
+                        bannerText.innerText = `CẢNH BÁO SOS: ${activeEmergencies.length} XE ĐANG GẶP NGUY HIỂM`;
+                    }
+                } else {
+                    if (banner) banner.style.display = "none";
+                }
+
+                if (!map) return;
+
+                // Sync markers on Leaflet Map
+                const activeIds = new Set();
+                activeEmergencies.forEach(e => {
+                    activeIds.add(e.sos_id);
+                    const lat = e.lat || 21.0021;
+                    const lon = e.lon || 105.8462;
+                    const pos = [lat, lon];
+
+                    if (!sosMarkers[e.sos_id]) {
+                        const heartIcon = L.divIcon({
+                            html: `<div class="sos-heartbeat-icon" title="CẢNH BÁO SOS: ${e.vehicle_id}">❤️</div>`,
+                            className: 'custom-sos-wrap',
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 18]
+                        });
+                        const m = L.marker(pos, { icon: heartIcon }).addTo(map);
+                        m.on('click', () => openSosModal(e));
+                        m.bindTooltip(`🚨 <b>SOS: ${e.vehicle_id}</b><br>Nhấn để xem chi tiết`, { permanent: false, direction: 'top' });
+                        sosMarkers[e.sos_id] = m;
+                    } else {
+                        sosMarkers[e.sos_id].setLatLng(pos);
+                    }
+                });
+
+                // Remove stale markers
+                Object.keys(sosMarkers).forEach(id => {
+                    if (!activeIds.has(id)) {
+                        map.removeLayer(sosMarkers[id]);
+                        delete sosMarkers[id];
+                    }
+                });
+            })
+            .catch(err => console.error("Error fetching active emergencies:", err));
+    }
+
+    function checkPendingSessions() {
+        fetch('/api/session/pending')
+            .then(res => res.json())
+            .then(data => {
+                const centerModal = document.getElementById("map-center-modal");
+                if (!centerModal) return;
+                const pendings = data.pending_sessions || [];
+                if (pendings.length > 0) {
+                    const first = pendings[0];
+                    centerModal.style.display = "block";
+                    centerModal.classList.add("visible");
+                    document.getElementById("pending-driver-name").innerText = first.driver_name || "Tài xế cũ";
+                    document.getElementById("pending-vehicle-id").innerText = first.vehicle_id;
+                    window._pendingVehicleId = first.vehicle_id;
+                } else {
+                    centerModal.style.display = "none";
+                    centerModal.classList.remove("visible");
+                    window._pendingVehicleId = null;
+                }
+            })
+            .catch(err => console.error("Error checking pending sessions:", err));
+    }
+
+    function openSosModal(eventData) {
+        currentSosModalEvent = eventData;
+        document.getElementById("modal-sos-vid").innerText = eventData.vehicle_id;
+        document.getElementById("modal-sos-id").innerText = eventData.sos_id;
+        
+        let srcText = "Nút khẩn cấp Slave (1)";
+        if (eventData.triggered_by === 2) srcText = "Màn hình cảm ứng UI (2)";
+        else if (eventData.triggered_by === 3) srcText = "Nút GPIO Raspberry Pi (3)";
+        document.getElementById("modal-sos-source").innerText = srcText;
+
+        const lat = (eventData.lat || 0).toFixed(5);
+        const lon = (eventData.lon || 0).toFixed(5);
+        document.getElementById("modal-sos-gps").innerText = `${lat}, ${lon}`;
+        
+        const dt = eventData.created_at ? new Date(eventData.created_at * 1000).toLocaleString('vi-VN') : '---';
+        document.getElementById("modal-sos-time").innerText = dt;
+
+        const isAcked = (eventData.status === 'ACKED');
+        const stEl = document.getElementById("modal-sos-status");
+        if (isAcked) {
+            stEl.innerHTML = '<span style="color:#0284c7; font-weight:800;">ĐÃ TIẾP NHẬN (STAGE 1)</span>';
+            const btnAck = document.getElementById("modal-btn-ack");
+            if (btnAck) { btnAck.disabled = true; btnAck.innerText = "✓ ĐÃ TIẾP NHẬN"; btnAck.style.opacity = "0.6"; }
+        } else {
+            stEl.innerHTML = '<span style="color:#dc2626; font-weight:800;">CHỜ TIẾP NHẬN (STAGE 0)</span>';
+            const btnAck = document.getElementById("modal-btn-ack");
+            if (btnAck) { btnAck.disabled = false; btnAck.innerText = "✓ TIẾP NHẬN (STAGE 1)"; btnAck.style.opacity = "1.0"; }
+        }
+
+        document.getElementById("sos-detail-modal").style.display = "flex";
+    }
+
+    function showFirstSosModal() {
+        if (activeEmergencies.length > 0) {
+            openSosModal(activeEmergencies[0]);
+        }
+    }
+
+    function closeSosModal() {
+        const modal = document.getElementById("sos-detail-modal");
+        if (modal) modal.style.display = "none";
+        currentSosModalEvent = null;
+    }
+
+    function ackCurrentSos() {
+        if (!currentSosModalEvent) return;
+        const btn = document.getElementById("modal-btn-ack");
+        if (btn) btn.disabled = true;
+
+        fetch(`/api/emergency/${currentSosModalEvent.sos_id}/acknowledge`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                currentSosModalEvent.status = 'ACKED';
+                document.getElementById("modal-sos-status").innerHTML = '<span style="color:#0284c7; font-weight:800;">ĐÃ TIẾP NHẬN (STAGE 1)</span>';
+                if (btn) { btn.innerText = "✓ ĐÃ TIẾP NHẬN"; btn.style.opacity = "0.6"; }
+                fetchEmergenciesAndSyncMarkers();
+            })
+            .catch(err => {
+                console.error("Error acknowledging emergency:", err);
+                alert("Lỗi khi tiếp nhận trường hợp khẩn cấp!");
+                if (btn) btn.disabled = false;
+            });
+    }
+
+    function resolveCurrentSos() {
+        if (!currentSosModalEvent) return;
+        const btn = document.getElementById("modal-btn-resolve");
+        if (btn) btn.disabled = true;
+
+        fetch(`/api/emergency/${currentSosModalEvent.sos_id}/resolve`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                closeSosModal();
+                fetchEmergenciesAndSyncMarkers();
+                updateVehicleStatus();
+            })
+            .catch(err => {
+                console.error("Error resolving emergency:", err);
+                alert("Lỗi khi đóng trường hợp khẩn cấp!");
+                if (btn) btn.disabled = false;
+            });
+    }
+
+    function confirmSession(action) {
+        const targetVid = window._pendingVehicleId || currentVehicleId;
+        if (!targetVid) return;
+        const agreeBtn = document.getElementById("btn-agree");
+        const disagreeBtn = document.getElementById("btn-disagree");
+        if (agreeBtn) agreeBtn.disabled = true;
+        if (disagreeBtn) disagreeBtn.disabled = true;
+        fetch(`/api/session/${targetVid}/resolve?action=${action}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                const modal = document.getElementById("map-center-modal");
+                if (modal) { modal.style.display = "none"; modal.classList.remove("visible"); modal.style.bottom = "24px"; }
+                checkPendingSessions();
+                updateVehicleStatus();
+            })
+            .catch(err => {
+                console.error("Error confirming session:", err);
+                alert("Error: could not confirm session.");
+            })
+            .finally(() => {
+                if (agreeBtn) agreeBtn.disabled = false;
+                if (disagreeBtn) disagreeBtn.disabled = false;
+            });
+    }
+
+    function dismissSos() {
+        const targetVid = currentVehicleId;
+        if (!targetVid) return;
+        const btn = document.getElementById("btn-dismiss-sos");
+        if (btn) btn.disabled = true;
+        fetch(`/api/admin/vehicle/${targetVid}/dismiss_sos`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                const toast = document.getElementById("sos-toast");
+                if (toast) { toast.style.display = "none"; toast.classList.remove("visible"); }
+                const modal = document.getElementById("map-center-modal");
+                if (modal) modal.style.bottom = "24px";
+                fetchEmergenciesAndSyncMarkers();
+                updateVehicleStatus();
+            })
+            .catch(err => {
+                console.error("Error dismissing SOS:", err);
+                alert("Error: could not dismiss SOS alert.");
+            })
+            .finally(() => {
+                if (btn) btn.disabled = false;
+            });
+    }
+
+    function toggleStream() {
+        if (!currentVehicleId) return;
+        const action = isStreamActive ? "stop" : "start";
+        streamRequestPending = true;
+        
+        const streamBtn = document.getElementById("stream-btn");
+        streamBtn.disabled = true;
+        
+        if (action === "start") {
+            streamBtn.innerText = "Requesting Stream...";
+            document.getElementById("stream-view-container").style.display = "block";
+        } else {
+            streamBtn.innerText = "Stopping Stream...";
+        }
+        
+        const formData = new FormData();
+        formData.append("action", action);
+        
+        fetch(`/api/vehicle/${currentVehicleId}/stream`, {
+            method: "POST",
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            console.log("Stream control result:", data);
+            setTimeout(() => {
+                streamRequestPending = false;
+                streamBtn.disabled = false;
+            }, 2000);
+        })
+        .catch(err => {
+            console.error("Error controlling stream:", err);
+            alert("Error sending stream command");
+            streamRequestPending = false;
+            streamBtn.disabled = false;
+        });
+    }
+
+    function handleStreamError() {
+        console.warn("MJPEG stream display issue");
+        document.getElementById("stream-loading").innerText = "Stream offline / disconnected";
+    }
+
+    // Hide loader once feed displays
+    document.getElementById("stream-img").addEventListener("load", () => {
+        document.getElementById("stream-loading").style.display = "none";
+        document.getElementById("stream-img").style.opacity = "1.0";
+    });
+
+    // Initialize with the first vehicle if available
+    const activeWidget = document.querySelector(".vehicle-widget.active");
+    if (activeWidget) {
+        currentVehicleId = activeWidget.getAttribute("data-vehicle-id");
+        panelBusId.innerText = `BUS: ${currentVehicleId}`;
+        
+        initMap();
+        updateVehicleStatus();
+        fetchEmergenciesAndSyncMarkers();
+        checkPendingSessions();
+        
+        setInterval(updateVehicleStatus, 2000);
+        setInterval(fetchEmergenciesAndSyncMarkers, 2000);
+        setInterval(checkPendingSessions, 3000);
+        
+        // Refresh recent live logs list without loading the whole page
+        setInterval(() => {
+            fetch(window.location.href)
+                .then(res => res.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newLogs = doc.getElementById('log-container').innerHTML;
+                    document.getElementById('log-container').innerHTML = newLogs;
+                });
+        }, 8000);
+    }
+
+    function selectVehicle(vehicleId, element) {
+        currentVehicleId = vehicleId;
+        panelBusId.innerText = `BUS: ${currentVehicleId}`;
+        
+        // Update active widget styling
+        const widgets = document.querySelectorAll(".vehicle-widget");
+        widgets.forEach(w => w.classList.remove("active"));
+        element.classList.add("active");
+        
+        updateVehicleStatus();
+    }
+</script>
+{% endblock %}

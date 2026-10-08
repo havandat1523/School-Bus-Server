@@ -1,0 +1,383 @@
+{% extends "layout.html" %}
+
+{% block title %}Drivers - SchoolBus{% endblock %}
+
+{% block head %}
+<style>
+    /* Custom video styles specifically for the verify modal in Light Theme */
+    #webcam-modal {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(4px);
+        justify-content: center;
+        align-items: center;
+    }
+    .verify-modal-content {
+        background: #ffffff;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 540px;
+        width: 100%;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        text-align: center;
+        box-sizing: border-box;
+    }
+    #webcam-video {
+        width: 100%;
+        max-width: 480px;
+        height: 360px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: #f1f5f9;
+        transform: scaleX(-1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Bus Drivers List</h2>
+    <button class="btn-add" onclick="openModal('add-driver-modal')">+ Add New Driver</button>
+</div>
+
+<div class="card-full">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Driver ID</th>
+                <th>Full Name</th>
+                <th>Citizen ID</th>
+                <th>License Class</th>
+                <th>License Number</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Duty</th>
+                <th>Status</th>
+                <th style="width: 50px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if drivers %}
+                {% for driver in drivers %}
+                    <tr>
+                        <td><b>{{ driver.driver_id }}</b></td>
+                        <td>{{ driver.full_name }}</td>
+                        <td>{{ driver.citizen_id or "---" }}</td>
+                        <td>{{ driver.license_class or "---" }}</td>
+                        <td>{{ driver.license_number }}</td>
+                        <td>{{ driver.phone or "---" }}</td>
+                        <td>{{ driver.email or "---" }}</td>
+                        <td>
+                            {% if driver.duty == 'ON DUTY' %}
+                                <span class="badge active">ON DUTY</span>
+                            {% else %}
+                                <span class="badge" style="background-color: #f1f5f9; color: #64748b;">OFF DUTY</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if driver.status == 'active' %}active{% elif driver.status == 'suspended' %}suspended{% else %}pending{% endif %}">
+                                {{ driver.status.upper() }}
+                            </span>
+                        </td>
+                        <td class="action-column">
+                            <button class="action-btn" onclick="toggleDropdown('dropdown-{{ driver.driver_id }}')">⋮</button>
+                            <div id="dropdown-{{ driver.driver_id }}" class="dropdown-menu">
+                                <button type="button"
+                                    data-id="{{ driver.driver_id }}"
+                                    data-name="{{ driver.full_name }}"
+                                    data-citizen="{{ driver.citizen_id or '' }}"
+                                    data-class="{{ driver.license_class or '' }}"
+                                    data-number="{{ driver.license_number or '' }}"
+                                    data-phone="{{ driver.phone or '' }}"
+                                    data-email="{{ driver.email or '' }}"
+                                    onclick="openEditDriverModal(this)">
+                                    Edit
+                                </button>
+                                {% if driver.status == 'pending' %}
+                                    <a href="#" onclick="openWebcam('{{ driver.driver_id }}', '{{ driver.full_name }}')">Verify (Capture)</a>
+                                {% elif driver.status == 'active' %}
+                                    <form action="/drivers/{{ driver.driver_id }}/suspend" method="POST">
+                                        <button type="submit">Suspend</button>
+                                    </form>
+                                {% elif driver.status == 'suspended' %}
+                                    <form action="/drivers/{{ driver.driver_id }}/activate" method="POST">
+                                        <button type="submit">Activate</button>
+                                    </form>
+                                {% endif %}
+                                <form action="/drivers/{{ driver.driver_id }}/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this driver?')">
+                                    <button type="submit" class="delete-action">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                        No drivers registered in the system.
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Driver Modal -->
+<div id="add-driver-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h2>Enroll New Driver</h2>
+        <form action="/drivers/add" method="POST">
+            <div class="form-group">
+                <label for="driver_id">Driver ID:</label>
+                <input type="text" id="driver_id" name="driver_id" class="form-control" placeholder="e.g., GV0012" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="full_name">Full Name:</label>
+                <input type="text" id="full_name" name="full_name" class="form-control" placeholder="e.g., Nguyen Van A" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="citizen_id">Citizen ID (CCCD):</label>
+                <input type="text" id="citizen_id" name="citizen_id" class="form-control" placeholder="e.g., 037123456789" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="license_class">Driving License Class:</label>
+                <input type="text" id="license_class" name="license_class" class="form-control" placeholder="e.g., B2, C, D" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="license_number">License Number:</label>
+                <input type="text" id="license_number" name="license_number" class="form-control" placeholder="e.g., 123456789" required>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Phone Number:</label>
+                <input type="text" id="phone" name="phone" class="form-control" placeholder="e.g., 0912345678" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address:</label>
+                <input type="email" id="email" name="email" class="form-control" placeholder="e.g., driver.a@schoolbus.com" required>
+            </div>
+            
+            <p style="font-size: 11px; color: var(--text-secondary);">
+                * Note: Newly registered drivers default to PENDING status. Face verification is required using the camera.
+            </p>
+            
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button type="submit" class="btn" style="flex: 1;">Add Driver</button>
+                <button type="button" class="btn" style="flex: 1; background: var(--text-secondary); color: #ffffff;" onclick="closeModal('add-driver-modal')">Close</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Driver Modal -->
+<div id="edit-driver-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h2>Edit Driver Profile</h2>
+        <form id="edit-driver-form" method="POST">
+            <div class="form-group">
+                <label for="edit_driver_id_display">Driver ID:</label>
+                <input type="text" id="edit_driver_id_display" class="form-control" readonly style="background-color: #f1f5f9; cursor: not-allowed;">
+            </div>
+            
+            <div class="form-group">
+                <label for="edit_full_name">Full Name:</label>
+                <input type="text" id="edit_full_name" name="full_name" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="edit_citizen_id">Citizen ID (CCCD):</label>
+                <input type="text" id="edit_citizen_id" name="citizen_id" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="edit_license_class">Driving License Class:</label>
+                <input type="text" id="edit_license_class" name="license_class" class="form-control" placeholder="e.g., B2, C, D" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="edit_license_number">License Number:</label>
+                <input type="text" id="edit_license_number" name="license_number" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="edit_phone">Phone Number:</label>
+                <input type="text" id="edit_phone" name="phone" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="edit_email">Email Address:</label>
+                <input type="email" id="edit_email" name="email" class="form-control" required>
+            </div>
+            
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button type="submit" class="btn" style="flex: 1;">Save Changes</button>
+                <button type="button" class="btn" style="flex: 1; background: var(--text-secondary); color: #ffffff;" onclick="closeModal('edit-driver-modal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Webcam Verification Overlay Modal -->
+<div id="webcam-modal">
+    <div class="verify-modal-content">
+        <h3 id="modal-title" style="margin-top:0; color:var(--text-primary);">Verify Driver</h3>
+        <video id="webcam-video" autoplay playsinline></video>
+        <canvas id="webcam-canvas" width="640" height="480" style="display: none;"></canvas>
+        <p id="webcam-status" style="margin-top: 15px; font-size: 13px; color: var(--accent-color); min-height: 20px; font-weight: 500;"></p>
+        <div style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
+            <button id="snap-btn" class="btn">Capture</button>
+            <button id="close-modal-btn" class="btn" style="background-color: var(--text-secondary); color: #ffffff;">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById("nav-drivers").classList.add("active");
+
+    // Modal Control Functions
+    function openModal(id) {
+        document.getElementById(id).style.display = 'flex';
+    }
+    
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    function openEditDriverModal(btn) {
+        const d = btn.dataset;
+        document.getElementById('edit-driver-form').action = `/drivers/${d.id}/edit`;
+        document.getElementById('edit_driver_id_display').value = d.id;
+        document.getElementById('edit_full_name').value = d.name || '';
+        document.getElementById('edit_citizen_id').value = d.citizen || '';
+        document.getElementById('edit_license_class').value = d.class || '';
+        document.getElementById('edit_license_number').value = d.number || '';
+        document.getElementById('edit_phone').value = d.phone || '';
+        document.getElementById('edit_email').value = d.email || '';
+        openModal('edit-driver-modal');
+    }
+
+    // Close modals/dropdowns when clicking outside
+    window.addEventListener('click', function(e) {
+        if (!e.target.matches('.action-btn')) {
+            const dropdowns = document.getElementsByClassName("dropdown-menu");
+            for (let i = 0; i < dropdowns.length; i++) {
+                dropdowns[i].style.display = "none";
+            }
+        }
+        if (e.target.matches('.modal-overlay')) {
+            e.target.style.display = 'none';
+        }
+    });
+
+    function toggleDropdown(id) {
+        const el = document.getElementById(id);
+        const isVisible = el.style.display === "block";
+        
+        // Hide all other dropdowns
+        const dropdowns = document.getElementsByClassName("dropdown-menu");
+        for (let i = 0; i < dropdowns.length; i++) {
+            dropdowns[i].style.display = "none";
+        }
+        
+        if (!isVisible) {
+            el.style.display = "block";
+        }
+    }
+
+    let stream = null;
+    let targetDriverId = null;
+    const modal = document.getElementById('webcam-modal');
+    const video = document.getElementById('webcam-video');
+    const canvas = document.getElementById('webcam-canvas');
+    const statusText = document.getElementById('webcam-status');
+    const modalTitle = document.getElementById('modal-title');
+
+    function openWebcam(driverId, fullName) {
+        targetDriverId = driverId;
+        modalTitle.innerText = `Verify Biometric Profile: ${fullName}`;
+        statusText.innerText = "Connecting camera...";
+        modal.style.display = 'flex';
+
+        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } })
+            .then(s => {
+                stream = s;
+                video.srcObject = s;
+                statusText.innerText = "Camera ready. Please align your face looking straight into the lens.";
+            })
+            .catch(err => {
+                console.error("Camera error:", err);
+                statusText.innerText = "Error: Laptop camera could not be accessed!";
+            });
+    }
+
+    document.getElementById('close-modal-btn').addEventListener('click', function() {
+        closeWebcam();
+    });
+
+    function closeWebcam() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        video.srcObject = null;
+        modal.style.display = 'none';
+        targetDriverId = null;
+    }
+
+    document.getElementById('snap-btn').addEventListener('click', function() {
+        if (!stream || !targetDriverId) return;
+
+        statusText.innerText = "Capturing and analyzing face biometric...";
+        const ctx = canvas.getContext('2d');
+        
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        fetch('/api/drivers/verify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                driver_id: targetDriverId,
+                image: dataUrl
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.result === 1) {
+                statusText.innerText = "Biometric face profile verified and enrolled successfully!";
+                setTimeout(() => {
+                    closeWebcam();
+                    window.location.reload();
+                }, 1500);
+            } else {
+                statusText.innerText = "Error: Face verification failed.";
+            }
+        })
+        .catch(err => {
+            console.error("Verification error:", err);
+            statusText.innerText = "Error connecting to the server!";
+        });
+    });
+</script>
+{% endblock %}

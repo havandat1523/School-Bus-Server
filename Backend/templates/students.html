@@ -1,0 +1,769 @@
+{% extends "layout.html" %}
+
+{% block title %}Students - SchoolBus{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Students List</h2>
+    <button class="btn-add" onclick="openAddStudentModal()">+ Add New Student</button>
+</div>
+
+<!-- F7: Trip Report Toolbar Card -->
+<div class="card-full"
+    style="margin-bottom: 20px; padding: 18px 22px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid var(--border-color, #e2e8f0);">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+        <!-- Left: Filters for Export -->
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label
+                    style="font-weight: 600; font-size: 13px; color: #475569; display: flex; align-items: center; gap: 4px;">
+                    📅 Ngày:
+                </label>
+                <input type="date" id="report-date" value="{{ today_date }}"
+                    style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #f8fafc; font-weight: 500;">
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label
+                    style="font-weight: 600; font-size: 13px; color: #475569; display: flex; align-items: center; gap: 4px;">
+                    🚌 Tuyến xe:
+                </label>
+                <select id="report-vehicle"
+                    style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #f8fafc; font-weight: 500;">
+                    <option value="">-- Tất cả xe --</option>
+                    {% if vehicles %}
+                    {% for v in vehicles %}
+                    <option value="{{ v.vehicle_id }}">{{ v.vehicle_id }}{% if v.license_plate %} ({{ v.license_plate
+                        }}){% endif %}</option>
+                    {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label
+                    style="font-weight: 600; font-size: 13px; color: #475569; display: flex; align-items: center; gap: 4px;">
+                    ⏰ Ca chạy:
+                </label>
+                <select id="report-shift"
+                    style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #f8fafc; font-weight: 500;">
+                    <option value="ALL">Cả ngày (Tất cả)</option>
+                    <option value="MORNING">Ca sáng (Đón)</option>
+                    <option value="AFTERNOON">Ca chiều (Trả)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Right: Action Buttons -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" onclick="exportTripReport('xlsx')" class="btn"
+                style="background: #16a34a; color: white; display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px; border: none; cursor: pointer; transition: all 0.2s;">
+                📑 Xuất Excel (.xlsx)
+            </button>
+            <button type="button" onclick="exportTripReport('csv')" class="btn"
+                style="background: #0284c7; color: white; display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px; border: none; cursor: pointer; transition: all 0.2s;">
+                📊 Xuất CSV (UTF-8)
+            </button>
+        </div>
+    </div>
+
+    <!-- Live Status Quick Filter for Table -->
+    <div
+        style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e2e8f0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span
+            style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Lọc
+            danh sách:</span>
+        <button type="button" class="filter-chip-btn active" onclick="filterStudentStatus('all', this)"
+            style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #cbd5e1; background: #0f172a; color: white; cursor: pointer;">Tất
+            cả</button>
+        <button type="button" class="filter-chip-btn" onclick="filterStudentStatus('onboard', this)"
+            style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #bbf7d0; background: #f0fdf4; color: #16a34a; cursor: pointer;">🟢
+            Đang trên xe</button>
+        <button type="button" class="filter-chip-btn" onclick="filterStudentStatus('offbus', this)"
+            style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b; cursor: pointer;">⚪
+            Không ở trên xe</button>
+        <button type="button" class="filter-chip-btn" onclick="filterStudentStatus('leave', this)"
+            style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #fed7aa; background: #fff7ed; color: #ea580c; cursor: pointer;">🟡
+            Nghỉ phép / Vắng</button>
+        <button type="button" class="filter-chip-btn" onclick="filterStudentStatus('suspended', this)"
+            style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #fecaca; background: #fef2f2; color: #dc2626; cursor: pointer;">🔴
+            Bị treo</button>
+        <span id="filtered-count-label"
+            style="margin-left: auto; font-size: 12px; color: #64748b; font-weight: 500;"></span>
+    </div>
+</div>
+
+<div class="card-full">
+    <table class="table" id="students-table">
+        <thead>
+            <tr>
+                <th>Student ID</th>
+                <th>RFID Card UID</th>
+                <th>Full Name</th>
+                <th>Class</th>
+                <th>Parent Phone</th>
+                <th>Address</th>
+                <th>Status</th>
+                <th>Bus Seat</th>
+                <th style="width: 50px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if students %}
+            {% for student in students %}
+            <tr class="student-row"
+                data-status="{% if student.status == 'suspended' %}suspended{% elif student.status == 'Đang trên xe' or student.status == 'onboard' %}onboard{% elif student.status == 'vacation' %}leave{% else %}offbus{% endif %}">
+                <td><b>HS{{ "%04d" | format(student.student_id) }}</b></td>
+                <td><code
+                        style="background:#f1f5f9; color:#0f172a; padding:4px 8px; border-radius:4px; border:1px solid #e2e8f0; font-family:monospace; font-weight:600;">{{ student.rfid_code }}</code>
+                </td>
+                <td>{{ student.full_name }}</td>
+                <td><b>{{ student.student_class or "---" }}</b></td>
+                <td>{{ student.parent_phone }}</td>
+                <td>{{ student.address or "---" }}</td>
+                <td>
+                    {% if student.status == 'suspended' %}
+                    <span class="badge"
+                        style="background-color: rgba(220, 38, 38, 0.1); color: var(--danger-color); font-weight: bold;">SUSPENDED</span>
+                    {% elif student.status == 'Đang trên xe' or student.status == 'onboard' %}
+                    <span class="badge active"
+                        style="background-color: rgba(22, 163, 74, 0.1); color: var(--success-color);">ONBOARD</span>
+                    {% elif student.status == 'không ở trên xe' or student.status == 'offbus' %}
+                    <span class="badge" style="background-color: #f1f5f9; color: #64748b;">OFF BUS</span>
+                    {% elif student.status == 'vacation' %}
+                    <span class="badge pending"
+                        style="background-color: rgba(234, 88, 12, 0.1); color: var(--warning-color);">LEAVE</span>
+                    {% else %}
+                    <span class="badge active">{{ student.status.upper() }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if student.current_seat > 0 %}
+                    <span style="color:var(--warning-color); font-weight:bold;">Seat #{{ student.current_seat }}</span>
+                    {% else %}
+                    <span style="color:var(--text-secondary);">Not Onboard</span>
+                    {% endif %}
+                </td>
+                <td class="action-column">
+                    <button class="action-btn" onclick="toggleDropdown('dropdown-{{ student.student_id }}')">⋮</button>
+                    <div id="dropdown-{{ student.student_id }}" class="dropdown-menu">
+                        <button type="button" data-id="{{ student.student_id }}" data-rfid="{{ student.rfid_code }}"
+                            data-name="{{ student.full_name }}" data-class="{{ student.student_class or '' }}"
+                            data-phone="{{ student.parent_phone or '' }}" data-address="{{ student.address or '' }}"
+                            data-lat="{{ student.lat or 20.9806 }}" data-lon="{{ student.lon or 105.7958 }}"
+                            onclick="openEditStudentModal(this)">
+                            Edit
+                        </button>
+                        {% if student.status == 'suspended' %}
+                        <form action="/students/{{ student.student_id }}/activate" method="POST">
+                            <button type="submit" class="view-action">Activate</button>
+                        </form>
+                        {% else %}
+                        <form action="/students/{{ student.student_id }}/suspend" method="POST"
+                            onsubmit="return confirm('Are you sure you want to suspend this student?')">
+                            <button type="submit">Suspend</button>
+                        </form>
+                        {% endif %}
+                        <form action="/students/{{ student.student_id }}/delete" method="POST"
+                            onsubmit="return confirm('Are you sure you want to delete this student?')">
+                            <button type="submit" class="delete-action">Delete</button>
+                        </form>
+                        <!-- F1: Nút Điểm danh thủ công -->
+                        <button type="button" data-student-id="{{ student.student_id }}"
+                            data-student-name="{{ student.full_name }}"
+                            data-student-rfid="{{ student.rfid_code or '' }}"
+                            data-student-seat="{{ student.current_seat or 0 }}"
+                            onclick="openManualAttendanceModal(this)">
+                            Force Scan Card
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                    No students registered in the system.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- F1: Manual Attendance Modal -->
+<div id="manual-attendance-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width: 500px; width: 95%;">
+        <h2 style="margin-top:0; margin-bottom:16px;">🗒️ Điểm danh thủ công</h2>
+        <p style="color:var(--text-secondary); margin-bottom:12px;">Xác nhận thủ công cho học sinh quên thẻ RFID.</p>
+
+        <input type="hidden" id="ma-student-id">
+        <input type="hidden" id="ma-student-rfid">
+        <input type="hidden" id="ma-student-seat">
+
+        <div style="background:var(--bg-secondary); border-radius:8px; padding:14px; margin-bottom:16px;">
+            <b>Học sinh:</b> <span id="ma-student-name-label"
+                style="color:var(--primary-color); font-weight:600;"></span>
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label style="display:block; font-weight:600; margin-bottom:8px;">Chiều <span
+                    style="color:var(--danger-color)">*</span></label>
+            <label style="margin-right:24px; cursor:pointer;">
+                <input type="radio" name="ma-direction" value="board"> 🚌 Lên xe
+            </label>
+            <label style="cursor:pointer;">
+                <input type="radio" name="ma-direction" value="alight"> 🏠 Xuống xe
+            </label>
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label style="display:block; font-weight:600; margin-bottom:6px;">Lý do</label>
+            <input id="ma-reason" type="text" value="forgot_card" placeholder="forgot_card / khác..."
+                style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--border-color); font-size:14px;">
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; font-weight:600; margin-bottom:6px;">ID Xe <span
+                    style="color:var(--danger-color)">*</span></label>
+            <input id="ma-vehicle-id" type="text" placeholder="Ví dụ: 29B-123.45"
+                style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--border-color); font-size:14px;">
+        </div>
+
+        <div
+            style="background: rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.2); border-radius:8px; padding:10px; margin-bottom:18px; font-size:13px; color:#dc2626;">
+            ⚠️ <b>Cảnh báo:</b> Hành động này sẽ được ghi vào log kiểm toán. Chỉ xác nhận khi chắc chắn học sinh đã
+            lên/xuống xe.
+        </div>
+
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button type="button" onclick="document.getElementById('manual-attendance-modal').style.display='none'"
+                style="padding:10px 20px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); cursor:pointer;">
+                Hủy
+            </button>
+            <button type="button" onclick="submitManualAttendance()"
+                style="padding:10px 20px; border-radius:8px; background:var(--warning-color); color:white; border:none; font-weight:600; cursor:pointer;">
+                ✅ Xác nhận điểm danh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Student Modal -->
+<div id="add-student-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width: 820px; width: 95%; max-height: 92vh; overflow-y: auto;">
+        <h2 style="margin-top: 0; margin-bottom: 16px;">Register New Student</h2>
+        <form action="/students/add" method="POST">
+            <!-- Hidden coordinates fields -->
+            <input type="hidden" id="add_lat" name="lat" value="20.9806">
+            <input type="hidden" id="add_lon" name="lon" value="105.7958">
+
+            <div style="display: grid; grid-template-columns: 1fr 1.15fr; gap: 20px; align-items: start;">
+                <!-- Left Column: Student Details -->
+                <div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="add_rfid_code">RFID Card UID:</label>
+                        <input type="text" id="add_rfid_code" name="rfid_code" class="form-control"
+                            placeholder="e.g., 04A3F1B2" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="add_full_name">Full Name:</label>
+                        <input type="text" id="add_full_name" name="full_name" class="form-control"
+                            placeholder="e.g., Tran Van C" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="add_student_class">Class:</label>
+                        <input type="text" id="add_student_class" name="student_class" class="form-control"
+                            placeholder="e.g., 3B" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="add_parent_phone">Parent Phone Number:</label>
+                        <input type="text" id="add_parent_phone" name="parent_phone" class="form-control"
+                            placeholder="e.g., 0987654321" required>
+                    </div>
+                </div>
+
+                <!-- Right Column: Address & Map Picker -->
+                <div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="add_address">Home Address:</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="add_address" name="address" class="form-control"
+                                placeholder="e.g., 141 Chien Thang, Tan Trieu, Ha Noi" required
+                                oninput="debouncedGeocode('add')" onblur="geocodeAddress('add')">
+                            <button type="button" class="btn"
+                                style="white-space: nowrap; padding: 6px 12px; font-size: 12px; background: #0284c7;"
+                                onclick="geocodeAddress('add')">📍 Search Map</button>
+                        </div>
+                    </div>
+
+                    <!-- Mini Map Picker for Home Location -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Stop Location: <small style="color: var(--text-secondary);">(Drag pin / click
+                                    map)</small></span>
+                            <span id="add_loc_status" style="font-size: 11px; color: #16a34a; font-weight: bold;">✓
+                                Location Set</span>
+                        </label>
+                        <div id="add-student-map"
+                            style="width: 100%; height: 215px; border-radius: 8px; border: 1px solid #cbd5e1; background: #e2e8f0; margin-top: 4px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button type="submit" class="btn" style="flex: 1;">Register</button>
+                <button type="button" class="btn" style="flex: 1; background: var(--text-secondary); color: #ffffff;"
+                    onclick="closeModal('add-student-modal')">Close</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div id="edit-student-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width: 820px; width: 95%; max-height: 92vh; overflow-y: auto;">
+        <h2 style="margin-top: 0; margin-bottom: 16px;">Edit Student Profile</h2>
+        <form id="edit-student-form" action="" method="POST">
+            <!-- Hidden coordinates fields -->
+            <input type="hidden" id="edit_lat" name="lat" value="20.9806">
+            <input type="hidden" id="edit_lon" name="lon" value="105.7958">
+
+            <div style="display: grid; grid-template-columns: 1fr 1.15fr; gap: 20px; align-items: start;">
+                <!-- Left Column: Student Details -->
+                <div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="edit_rfid_code">RFID Card UID:</label>
+                        <input type="text" id="edit_rfid_code" name="rfid_code" class="form-control" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="edit_full_name">Full Name:</label>
+                        <input type="text" id="edit_full_name" name="full_name" class="form-control" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="edit_student_class">Class:</label>
+                        <input type="text" id="edit_student_class" name="student_class" class="form-control" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="edit_parent_phone">Parent Phone Number:</label>
+                        <input type="text" id="edit_parent_phone" name="parent_phone" class="form-control" required>
+                    </div>
+                </div>
+
+                <!-- Right Column: Address & Map Picker -->
+                <div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="edit_address">Home Address:</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="edit_address" name="address" class="form-control" required
+                                oninput="debouncedGeocode('edit')" onblur="geocodeAddress('edit')">
+                            <button type="button" class="btn"
+                                style="white-space: nowrap; padding: 6px 12px; font-size: 12px; background: #0284c7;"
+                                onclick="geocodeAddress('edit')">📍 Search Map</button>
+                        </div>
+                    </div>
+
+                    <!-- Mini Map Picker for Home Location -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Stop Location: <small style="color: var(--text-secondary);">(Drag pin / click
+                                    map)</small></span>
+                            <span id="edit_loc_status" style="font-size: 11px; color: #16a34a; font-weight: bold;">✓
+                                Location Set</span>
+                        </label>
+                        <div id="edit-student-map"
+                            style="width: 100%; height: 215px; border-radius: 8px; border: 1px solid #cbd5e1; background: #e2e8f0; margin-top: 4px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button type="submit" class="btn" style="flex: 1; background: #0284c7;">Save Changes</button>
+                <button type="button" class="btn" style="flex: 1; background: var(--text-secondary); color: #ffffff;"
+                    onclick="closeModal('edit-student-modal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById("nav-students").classList.add("active");
+
+    let addMap = null, addMarker = null;
+    let editMap = null, editMarker = null;
+    let geocodeTimers = {};
+
+    // Offline dictionary for popular Hanoi areas/streets to guarantee instant fallback
+    const HANOI_LANDMARKS = [
+        { keys: ['mo lao', 'mộ lao', 'tsq', 'euroland'], coords: [20.9785, 105.7820] },
+        { keys: ['chien thang', 'chiến thắng', 'tan trieu', 'tân triều'], coords: [20.9806, 105.7958] },
+        { keys: ['to huu', 'tố hữu', 'ecolife'], coords: [20.9930, 105.7720] },
+        { keys: ['dai mo', 'đại mỗ', 'louis city'], coords: [20.9950, 105.7580] },
+        { keys: ['duong noi', 'dương nội', 'flc star'], coords: [20.9670, 105.7480] },
+        { keys: ['le trong tan', 'lê trọng tấn'], coords: [20.9630, 105.7520] },
+        { keys: ['van phuc', 'vạn phúc'], coords: [20.9790, 105.7730] },
+        { keys: ['ha dong', 'hà đông'], coords: [20.9720, 105.7770] },
+        { keys: ['thanh tri', 'thanh trì'], coords: [20.9500, 105.8200] },
+        { keys: ['cau giay', 'cầu giấy'], coords: [21.0330, 105.7950] },
+        { keys: ['nam tu liem', 'nam từ liêm'], coords: [21.0150, 105.7650] },
+        { keys: ['bac tu liem', 'bắc từ liêm'], coords: [21.0550, 105.7550] },
+        { keys: ['thanh xuan', 'thanh xuân', 'nguyen trai', 'nguyễn trãi'], coords: [20.9920, 105.8080] },
+        { keys: ['hoan kiem', 'hoàn kiếm'], coords: [21.0285, 105.8542] },
+        { keys: ['ba dinh', 'ba đình'], coords: [21.0340, 105.8240] },
+        { keys: ['dong da', 'đống đa'], coords: [21.0180, 105.8250] },
+        { keys: ['hai ba trung', 'hai bà trưng'], coords: [21.0120, 105.8580] },
+        { keys: ['tay ho', 'tây hồ'], coords: [21.0650, 105.8200] },
+        { keys: ['hoang mai', 'hoàng mai'], coords: [20.9750, 105.8500] }
+    ];
+
+    function createPickerMap(mapId, initialLat, initialLon, onLocationChanged) {
+        const map = L.map(mapId, {
+            zoomControl: true,
+            attributionControl: false
+        }).setView([initialLat, initialLon], 15);
+
+        L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            attribution: '&copy; Google Maps',
+            maxZoom: 20
+        }).addTo(map);
+
+        const pinIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32]
+        });
+
+        const marker = L.marker([initialLat, initialLon], {
+            icon: pinIcon,
+            draggable: true
+        }).addTo(map);
+
+        marker.on('dragend', function (e) {
+            const pos = e.target.getLatLng();
+            onLocationChanged(pos.lat, pos.lng);
+        });
+
+        map.on('click', function (e) {
+            marker.setLatLng(e.latlng);
+            onLocationChanged(e.latlng.lat, e.latlng.lng);
+        });
+
+        return { map, marker };
+    }
+
+    function openAddStudentModal() {
+        openModal('add-student-modal');
+        setTimeout(function () {
+            const lat = parseFloat(document.getElementById('add_lat').value) || 20.9806;
+            const lon = parseFloat(document.getElementById('add_lon').value) || 105.7958;
+            if (!addMap) {
+                const picker = createPickerMap('add-student-map', lat, lon, function (newLat, newLon) {
+                    document.getElementById('add_lat').value = newLat.toFixed(6);
+                    document.getElementById('add_lon').value = newLon.toFixed(6);
+                    document.getElementById('add_loc_status').innerText = '✓ Location Pinned';
+                });
+                addMap = picker.map;
+                addMarker = picker.marker;
+                setTimeout(() => { if (addMap) addMap.invalidateSize(); }, 200);
+            } else {
+                addMap.invalidateSize();
+                addMap.setView([lat, lon], 15);
+                addMarker.setLatLng([lat, lon]);
+            }
+        }, 200);
+    }
+
+    function openEditStudentModal(btn) {
+        const d = btn.dataset;
+        const id = d.id;
+        document.getElementById('edit-student-form').action = `/students/${id}/edit`;
+        document.getElementById('edit_rfid_code').value = d.rfid || '';
+        document.getElementById('edit_full_name').value = d.name || '';
+        document.getElementById('edit_student_class').value = d.class || '';
+        document.getElementById('edit_parent_phone').value = d.phone || '';
+        document.getElementById('edit_address').value = d.address || '';
+
+        let curLat = parseFloat(d.lat) || 20.9806;
+        let curLon = parseFloat(d.lon) || 105.7958;
+        document.getElementById('edit_lat').value = curLat.toFixed(6);
+        document.getElementById('edit_lon').value = curLon.toFixed(6);
+
+        openModal('edit-student-modal');
+
+        setTimeout(function () {
+            if (!editMap) {
+                const picker = createPickerMap('edit-student-map', curLat, curLon, function (newLat, newLon) {
+                    document.getElementById('edit_lat').value = newLat.toFixed(6);
+                    document.getElementById('edit_lon').value = newLon.toFixed(6);
+                    document.getElementById('edit_loc_status').innerText = '✓ Location Pinned';
+                });
+                editMap = picker.map;
+                editMarker = picker.marker;
+                setTimeout(() => { if (editMap) editMap.invalidateSize(); }, 200);
+            } else {
+                editMap.invalidateSize();
+                editMap.setView([curLat, curLon], 15);
+                editMarker.setLatLng([curLat, curLon]);
+            }
+
+            // Auto geocode if address exists
+            if (d.address && d.address.trim().length > 3) {
+                geocodeAddress('edit');
+            }
+        }, 200);
+    }
+
+    function debouncedGeocode(prefix) {
+        if (geocodeTimers[prefix]) clearTimeout(geocodeTimers[prefix]);
+        geocodeTimers[prefix] = setTimeout(function () {
+            geocodeAddress(prefix);
+        }, 600);
+    }
+
+    function checkOfflineLandmark(query) {
+        const q = query.toLowerCase();
+        for (const item of HANOI_LANDMARKS) {
+            for (const k of item.keys) {
+                if (q.includes(k)) {
+                    return item.coords;
+                }
+            }
+        }
+        return null;
+    }
+
+    function geocodeAddress(prefix) {
+        const addrInput = document.getElementById(`${prefix}_address`);
+        const query = addrInput ? addrInput.value.trim() : '';
+        if (!query || query.length < 3) return;
+
+        const statusEl = document.getElementById(`${prefix}_loc_status`);
+        if (statusEl) {
+            statusEl.innerText = 'Locating...';
+            statusEl.style.color = '#0284c7';
+        }
+
+        // Tier 1: Komoot Photon API (Open CORS, OSM-based, reliable and fast)
+        const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query + ', Hanoi')}&limit=1`;
+
+        fetch(photonUrl)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.features && data.features.length > 0) {
+                    const coords = data.features[0].geometry.coordinates; // [lon, lat]
+                    applyGeocodeResult(prefix, coords[1], coords[0]);
+                } else {
+                    // Try fallback
+                    fallbackGeocode(prefix, query);
+                }
+            })
+            .catch(() => {
+                fallbackGeocode(prefix, query);
+            });
+    }
+
+    function fallbackGeocode(prefix, query) {
+        // Tier 2: Nominatim OSM
+        const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Hanoi, Vietnam')}&countrycodes=vn&limit=1`;
+
+        fetch(nominatimUrl)
+            .then(r => r.json())
+            .then(d => {
+                if (d && d.length > 0) {
+                    applyGeocodeResult(prefix, parseFloat(d[0].lat), parseFloat(d[0].lon));
+                } else {
+                    useOfflineDictionary(prefix, query);
+                }
+            })
+            .catch(() => {
+                useOfflineDictionary(prefix, query);
+            });
+    }
+
+    function useOfflineDictionary(prefix, query) {
+        const landmarkCoords = checkOfflineLandmark(query);
+        const statusEl = document.getElementById(`${prefix}_loc_status`);
+        if (landmarkCoords) {
+            applyGeocodeResult(prefix, landmarkCoords[0], landmarkCoords[1]);
+        } else {
+            if (statusEl) {
+                statusEl.innerText = '✓ Set on map';
+                statusEl.style.color = '#16a34a';
+            }
+        }
+    }
+
+    function applyGeocodeResult(prefix, lat, lon) {
+        const latEl = document.getElementById(`${prefix}_lat`);
+        const lonEl = document.getElementById(`${prefix}_lon`);
+        if (latEl) latEl.value = lat.toFixed(6);
+        if (lonEl) lonEl.value = lon.toFixed(6);
+
+        const statusEl = document.getElementById(`${prefix}_loc_status`);
+        if (statusEl) {
+            statusEl.innerText = '✓ Located on map';
+            statusEl.style.color = '#16a34a';
+        }
+
+        if (prefix === 'add' && addMap && addMarker) {
+            addMap.setView([lat, lon], 16);
+            addMarker.setLatLng([lat, lon]);
+        } else if (prefix === 'edit' && editMap && editMarker) {
+            editMap.setView([lat, lon], 16);
+            editMarker.setLatLng([lat, lon]);
+        }
+    }
+
+    // Modal Control Functions
+    function openModal(id) {
+        document.getElementById(id).style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    // Close modals/dropdowns when clicking outside
+    window.addEventListener('click', function (e) {
+        if (!e.target.matches('.action-btn')) {
+            const dropdowns = document.getElementsByClassName("dropdown-menu");
+            for (let i = 0; i < dropdowns.length; i++) {
+                dropdowns[i].style.display = "none";
+            }
+        }
+        if (e.target.matches('.modal-overlay')) {
+            e.target.style.display = 'none';
+        }
+    });
+
+    function toggleDropdown(id) {
+        const el = document.getElementById(id);
+        const isVisible = el.style.display === "block";
+
+        // Hide all other dropdowns
+        const dropdowns = document.getElementsByClassName("dropdown-menu");
+        for (let i = 0; i < dropdowns.length; i++) {
+            dropdowns[i].style.display = "none";
+        }
+
+        if (!isVisible) {
+            el.style.display = "block";
+        }
+    }
+
+    // ── F1: Manual Attendance ──────────────────────────────────────────────
+    function openManualAttendanceModal(btn) {
+        const sid = btn.getAttribute('data-student-id');
+        const sname = btn.getAttribute('data-student-name');
+        const srfid = btn.getAttribute('data-student-rfid');
+        const sseat = btn.getAttribute('data-student-seat');
+        document.getElementById('ma-student-id').value = sid;
+        document.getElementById('ma-student-rfid').value = srfid;
+        document.getElementById('ma-student-seat').value = sseat;
+        document.getElementById('ma-student-name-label').textContent = sname + ' (HS' + String(sid).padStart(4, '0') + ')';
+        // Close dropdown
+        document.querySelectorAll('.dropdown-menu').forEach(d => d.style.display = 'none');
+        document.getElementById('manual-attendance-modal').style.display = 'flex';
+    }
+
+    function submitManualAttendance() {
+        const sid = document.getElementById('ma-student-id').value;
+        const rfid = document.getElementById('ma-student-rfid').value;
+        const seat = document.getElementById('ma-student-seat').value;
+        const direction = document.querySelector('input[name="ma-direction"]:checked')?.value;
+        const reason = document.getElementById('ma-reason').value;
+        const vehicleId = document.getElementById('ma-vehicle-id').value;
+
+        if (!direction) { alert('Vui lòng chọn chiều (Lên xe / Xuống xe)'); return; }
+        if (!vehicleId) { alert('Vui lòng nhập ID xe'); return; }
+
+        const formData = new FormData();
+        formData.append('vehicle_id', vehicleId);
+        formData.append('direction', direction);
+        formData.append('reason', reason || 'forgot_card');
+        formData.append('confirmed_by', 'admin');
+        formData.append('rfid_code', rfid);
+        formData.append('seat_number', seat || 0);
+
+        fetch('/api/student/' + sid + '/manual-attendance', {
+            method: 'POST',
+            body: formData
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.result === 1) {
+                    alert('✅ ' + data.message);
+                    document.getElementById('manual-attendance-modal').style.display = 'none';
+                    location.reload();
+                } else {
+                    alert('❌ Lỗi: ' + (data.detail || 'Không thể xử lý'));
+                }
+            })
+            .catch(e => alert('❌ Lỗi kết nối: ' + e));
+    }
+
+    // ── F7: Export Trip Report ───────────────────────────────────────────
+    function exportTripReport(format) {
+        const dateInput = document.getElementById('report-date');
+        const vehicleSelect = document.getElementById('report-vehicle');
+        const shiftSelect = document.getElementById('report-shift');
+
+        const date = dateInput ? dateInput.value : '';
+        const vehicleId = vehicleSelect ? vehicleSelect.value : '';
+        const shift = shiftSelect ? shiftSelect.value : 'ALL';
+
+        let url = `/api/trip-report?format=${encodeURIComponent(format)}`;
+        if (date) url += `&date=${encodeURIComponent(date)}`;
+        if (vehicleId) url += `&vehicle_id=${encodeURIComponent(vehicleId)}`;
+        if (shift) url += `&shift=${encodeURIComponent(shift)}`;
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // ── F7: Quick Status Filter for Table ────────────────────────────────
+    function filterStudentStatus(status, chipBtn) {
+        document.querySelectorAll('.filter-chip-btn').forEach(btn => {
+            btn.style.background = '#f8fafc';
+            btn.style.color = '#64748b';
+            btn.style.border = '1px solid #cbd5e1';
+        });
+        if (chipBtn) {
+            chipBtn.style.background = '#0f172a';
+            chipBtn.style.color = '#ffffff';
+            chipBtn.style.border = '1px solid #0f172a';
+        }
+
+        const rows = document.querySelectorAll('#students-table tbody tr.student-row');
+        let visibleCount = 0;
+        rows.forEach(row => {
+            const rowStatus = row.getAttribute('data-status');
+            if (status === 'all' || rowStatus === status) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        const countLabel = document.getElementById('filtered-count-label');
+        if (countLabel) {
+            countLabel.textContent = `Hiển thị ${visibleCount}/${rows.length} học sinh`;
+        }
+    }
+</script>
+{% endblock %}
